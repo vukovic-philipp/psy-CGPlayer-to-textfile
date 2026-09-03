@@ -53,13 +53,34 @@ Thunder is running. A live terminal view shows:
 - whether the War Thunder API is reachable and if you are in a match or the hangar
 - every player name detected so far
 - the analysis files already saved, with their player counts and timestamps
+- the raffle entry list, once you have built one
 
 Hotkeys work globally, so they still fire while War Thunder has focus:
 
 - `Alt+Ctrl+1` — start tracking a match (clears the previous player list)
 - `Alt+Ctrl+2` — stop tracking and save the collected players to `textfiles/analysis_N.txt`
+- `Alt+Ctrl+3` — build the weighted raffle entry list from every saved match
 - `Alt+Ctrl+4` — open the `textfiles` folder
 - `Alt+Ctrl+Esc` — exit (an active session is saved on the way out)
+
+## Raffle entries
+
+`Alt+Ctrl+3` reads every `textfiles/analysis_*.txt`, counts how many matches
+each player attended, and gives them `count - 2` entries in the draw:
+
+| Matches attended | Entries |
+|---|---|
+| 1 | none |
+| 2 | none |
+| 3 | 1 |
+| 4 | 2 |
+| 5 | 3 |
+
+The result is written to `textfiles/raffle_entries.txt` with each name repeated
+once per entry, one per line, ready to paste into any random picker. The TUI
+shows the top of that list with each player's match count. Names are matched
+case-insensitively and only count once per match file, so the number really is
+"games attended". Run it again at any time to rebuild it from the current files.
 
 If the footer reports that hotkeys are unavailable, start the program from an
 elevated console — the `keyboard` library needs those rights on some systems.

@@ -26,6 +26,13 @@ REQUEST_TIMEOUT = 2  # seconds
 UI_INTERVAL = 0.25  # seconds between TUI redraws
 MAX_MESSAGES = 5  # recent status lines kept in the log pane
 
+# Raffle weighting: a player who turned up in `count` saved matches gets
+# `count - ENTRY_OFFSET` entries, and only when that is at least 1. So three
+# matches earn one entry, four earn two, and anything below three earns none.
+ENTRY_OFFSET = 2
+RAFFLE_FILENAME = 'raffle_entries.txt'
+RAFFLE_ROWS = 8  # qualifying players shown in the TUI; the file holds them all
+
 
 def base_dir():
     """Directory the app writes to: next to the .exe when frozen, else the script."""
@@ -48,6 +55,7 @@ last_chat_id = 0
 running = True
 track_started_at = None
 last_saved_file = None
+raffle = None  # (qualifying rows, total entries, players seen, output path)
 api_online = False
 in_match = False
 messages = []
@@ -212,13 +220,69 @@ def saved_files(limit=6):
     for path in glob.glob(os.path.join(TEXTFILES_DIR, 'analysis_*.txt')):
         try:
             stat = os.stat(path)
-            with open(path, encoding='utf-8') as f:
+            with open(path, encoding='utf-8-sig') as f:
                 count = sum(1 for line in f if line.strip())
         except OSError:
             continue
         entries.append((stat.st_mtime, os.path.basename(path), count))
     entries.sort(reverse=True)
     return entries[:limit], len(entries)
+
+
+#raffle analysis over every saved match
+def player_counts():
+    """How many saved analysis files each player turns up in.
+
+    Names are grouped case-insensitively but reported with the spelling that
+    was seen first, and a name only counts once per file, so the number is the
+    count of matches attended rather than of mentions.
+    """
+    counts = {}
+    canonical = {}
+    for path in sorted(glob.glob(os.path.join(TEXTFILES_DIR, 'analysis_*.txt'))):
+        try:
+            with open(path, encoding='utf-8-sig') as f:
+                # Fold case while de-duplicating so that a file listing both
+                # "Solo" and "solo" still only counts as one attendance.
+                names = {}
+                for line in f:
+                    name = line.strip()
+                    if name:
+                        names.setdefault(name.lower(), name)
+        except OSError:
+            continue
+        for key, name in names.items():
+            canonical.setdefault(key, name)
+            counts[key] = counts.get(key, 0) + 1
+    return [(canonical[key], count) for key, count in counts.items()]
+
+
+def build_raffle():
+    """Write the weighted entry list: each player repeated count - 2 times."""
+    global raffle
+    counts = player_counts()
+    if not counts:
+        log("No saved matches to analyse yet.")
+        return
+
+    qualifying = []
+    for name, count in counts:
+        tickets = count - ENTRY_OFFSET
+        if tickets >= 1:
+            qualifying.append((name, count, tickets))
+    qualifying.sort(key=lambda row: (-row[2], row[0].lower()))
+
+    path = os.path.join(TEXTFILES_DIR, RAFFLE_FILENAME)
+    with open(path, 'w', encoding='utf-8') as f:
+        for name, _, tickets in qualifying:
+            f.write(f"{name}\n" * tickets)
+
+    total = sum(row[2] for row in qualifying)
+    raffle = (qualifying, total, len(counts), path)
+    if qualifying:
+        log(f"Raffle: {total} entries from {len(qualifying)} players -> {RAFFLE_FILENAME}")
+    else:
+        log(f"Raffle: nobody has played more than {ENTRY_OFFSET} matches yet.")
 
 
 #terminal rendering
@@ -351,6 +415,8 @@ def build_frame(width, height):
 
     # Everything except the player list has a fixed height; give it the rest.
     fixed = 14 + max(1, len(files))
+    if raffle:
+        fixed += 3 + min(len(raffle[0]), RAFFLE_ROWS)
     lines.append(rule(width, f"DETECTED PLAYERS ({len(names)})"))
     lines.extend(name_columns(names, width, max(2, height - fixed)))
     lines.append("")
@@ -366,6 +432,20 @@ def build_frame(width, height):
     lines.append(c(f"  folder: {TEXTFILES_DIR}", DIM))
     lines.append("")
 
+    if raffle:
+        qualifying, total, seen, path = raffle
+        lines.append(rule(width, f"RAFFLE ENTRIES ({total} from {len(qualifying)} of {seen} players)"))
+        if not qualifying:
+            lines.append(c(f"  nobody has played more than {ENTRY_OFFSET} matches yet", DIM))
+        for name, count, tickets in qualifying[:RAFFLE_ROWS]:
+            bar = c('#' * min(tickets, 20), GREEN)
+            lines.append(f"  {name.ljust(22)}{c(str(count) + ' matches', DIM)}"
+                         f"  ->{str(tickets).rjust(3)} {bar}")
+        if len(qualifying) > RAFFLE_ROWS:
+            lines.append(c(f"  ... and {len(qualifying) - RAFFLE_ROWS} more", DIM))
+        lines.append(c(f"  written to: {os.path.basename(path)}", DIM))
+        lines.append("")
+
     lines.append(rule(width, "LOG"))
     if not messages:
         lines.append(c("  (no activity yet)", DIM))
@@ -375,10 +455,11 @@ def build_frame(width, height):
 
     lines.append(rule(width))
     if hotkeys_ok:
-        lines.append("  " + c("Alt+Ctrl+1", BOLD) + " start    "
-                     + c("Alt+Ctrl+2", BOLD) + " stop & save    "
-                     + c("Alt+Ctrl+4", BOLD) + " open folder    "
-                     + c("Alt+Ctrl+Esc", BOLD) + " quit")
+        lines.append("  " + c("Alt+Ctrl+", BOLD) + c("1", BOLD) + " start   "
+                     + c("2", BOLD) + " stop & save   "
+                     + c("3", BOLD) + " raffle entries   "
+                     + c("4", BOLD) + " open folder   "
+                     + c("Esc", BOLD) + " quit")
     else:
         lines.append("  " + c("Hotkeys unavailable - try running as administrator.", RED))
     return lines
@@ -401,6 +482,7 @@ def register_hotkeys():
     try:
         keyboard.add_hotkey('alt+ctrl+1', start_tracking)
         keyboard.add_hotkey('alt+ctrl+2', stop_tracking)
+        keyboard.add_hotkey('alt+ctrl+3', build_raffle)
         keyboard.add_hotkey('alt+ctrl+4', open_textfiles)
         keyboard.add_hotkey('alt+ctrl+esc', exit_program)
     except Exception as exc:  # keyboard needs elevated rights on some systems
