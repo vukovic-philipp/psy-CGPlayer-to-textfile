@@ -1,6 +1,7 @@
-# local install (created by install.ps1)
+# local install (created by install.py)
 .venv/
 run-gt.bat
+run-gt.sh
 
 # collected player lists
 textfiles/*.txt

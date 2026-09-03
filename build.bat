@@ -1,22 +1,28 @@
 @echo off
-rem Double-click entry point for the installer. Arguments are passed through,
-rem e.g.  install.bat --build --desktop
+rem Builds the portable dist\gt.exe. Arguments are passed through,
+rem e.g.  build.bat --clean
 setlocal
 cd /d "%~dp0"
 
+rem Prefer the project virtual environment when install.bat has been run.
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" "build.py" %*
+    goto :done
+)
+
 call :findpython
 if not defined PYTHON goto :nopython
+%PYTHON% "build.py" %*
 
-%PYTHON% "install.py" %*
+:done
 if errorlevel 1 (
     echo.
-    echo Installation failed.
+    echo Build failed.
 )
 pause
 exit /b
 
 :findpython
-rem Prefer the py launcher, fall back to python on PATH.
 set "PYTHON="
 py -3 --version >nul 2>&1
 if not errorlevel 1 (

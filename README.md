@@ -9,37 +9,40 @@ roster over this API, so names are collected from the kill-feed
 
 ## Install
 
-Double-click `install.bat`, or from a terminal:
-
-```bash
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
-
-This creates a `.venv` folder next to the script, installs `keyboard` and
-`requests` into it, and writes a `run-gt.bat` launcher. Nothing is installed
-system-wide — deleting the project folder removes everything.
+Double-click `install.bat`. It finds your Python, creates a `.venv` folder next
+to the script, installs `keyboard` and `requests` into it, and writes a
+`run-gt.bat` launcher. Nothing is installed system-wide — deleting the project
+folder removes everything.
 
 Options (combine as needed):
 
-- `-Desktop` — also put a "Giveaway Tracker" shortcut on the desktop
-- `-Build` — also build the portable `dist\gt.exe`
-- `-Force` — delete and recreate an existing `.venv`
+- `--desktop` — also place a launcher on the desktop
+- `--build` — also build the portable `dist\gt.exe`
+- `--force` — delete and recreate an existing `.venv`
 
 ```bash
-powershell -ExecutionPolicy Bypass -File install.ps1 -Build -Desktop
+install.bat --build --desktop
+```
+
+The installer is plain Python, so no scripts need to be enabled and it also
+works on Linux/macOS:
+
+```bash
+python3 install.py
 ```
 
 ## Portable executable
 
-The standalone build is still supported and is produced by `build.ps1`:
+The standalone build is still supported. Double-click `build.bat`, or:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File build.ps1 -Clean
+build.bat --clean
 ```
 
-It uses the local `.venv` when one exists and otherwise the Python on `PATH`.
-The result is `dist\gt.exe`, which needs no Python installation and writes its
-`textfiles` folder next to itself, so the exe can be copied anywhere.
+It uses the local `.venv` when one exists and otherwise the Python on `PATH`,
+installing PyInstaller as needed. The result is `dist\gt.exe`, which needs no
+Python installation and writes its `textfiles` folder next to itself, so the exe
+can be copied anywhere.
 
 ## Usage
 
